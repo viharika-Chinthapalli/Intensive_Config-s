@@ -2170,7 +2170,7 @@ if (fs.existsSync(clientIndexHtml)) {
     res.status(503).json({
       error: "UI not built",
       hint:
-        "Missing client/dist (Vite build). On Render, ensure the build step runs and Vite is installed: vite + @vitejs/plugin-react are listed in dependencies; build command should be `npm ci && npm run build`.",
+        "Missing client/dist — Vite never ran. On Render, set Build Command to npm ci && npm run build (not only npm install). With Root Directory batch-tracker-ui use that; from repo root use npm --prefix batch-tracker-ui ci && npm --prefix batch-tracker-ui run build. Then redeploy.",
     });
   });
 }

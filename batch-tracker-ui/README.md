@@ -111,6 +111,17 @@ Do not commit `service-account.json`, anything under `secrets/` except `secrets/
 
 One **Web Service** runs the API and serves the built React app from the same URL (so `/api` works without CORS tricks).
 
+### Fix “UI not built” / JSON on `/`
+
+Render’s **Build Command** must run **`npm run build`** (Vite). **`npm install` alone does not create `client/dist`** — that is the usual cause of `{"error":"UI not built",...}`.
+
+| **Root Directory** (Render → Settings) | **Build Command** (copy exactly) | **Start Command** |
+|----------------------------------------|----------------------------------|-------------------|
+| `batch-tracker-ui` | `npm ci && npm run build` | `npm start` |
+| *(empty — repo root)* | `npm --prefix batch-tracker-ui ci && npm --prefix batch-tracker-ui run build` | `npm --prefix batch-tracker-ui start` |
+
+After saving, trigger **Manual Deploy** → **Clear build cache & deploy** once. In **Logs**, confirm you see **`vite build`** and **`dist/`** output.
+
 ### 1. Prerequisites
 
 - Repo on GitHub (e.g. `Intensive_Config-s` with `batch-tracker-ui/` inside).
