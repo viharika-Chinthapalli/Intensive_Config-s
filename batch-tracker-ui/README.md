@@ -124,11 +124,19 @@ One **Web Service** runs the API and serves the built React app from the same UR
    - **Name:** e.g. `batch-tracker-ui`
    - **Region:** closest to you
    - **Branch:** `main`
-   - **Root Directory:** `batch-tracker-ui` (important if the app lives in that subfolder)
+   - **Root Directory:** leave **empty** (repo root) **recommended** for this monorepo — then use the build/start commands below.  
+     *Alternatively* set Root Directory to **`batch-tracker-ui`** and use the shorter commands in parentheses.
    - **Runtime:** Node
-   - **Build Command:** `npm ci && npm run build`
-   - **Start Command:** `npm start`
+   - **Build Command:**  
+     `npm --prefix batch-tracker-ui ci && npm --prefix batch-tracker-ui run build`  
+     *(If Root Directory is `batch-tracker-ui`: `npm ci && npm run build`.)*  
+     The build must create `batch-tracker-ui/client/dist/index.html` (or `client/dist/...` when cwd is that folder). Vite is a **dependency** so production `npm ci` still installs it.
+   - **Start Command:**  
+     `npm --prefix batch-tracker-ui start`  
+     *(If Root Directory is `batch-tracker-ui`: `npm start`.)*
 4. **Instance type:** Free (cold starts after idle are normal on the free tier).
+
+**Where is “Master syllabus align”?** On the deployed site it is the page at **`/`** — your `https://…onrender.com/` with no path (not a separate `/app` URL). Locally run `npm run dev` in `batch-tracker-ui` and open **http://localhost:5173/**.
 
 ### 3. Environment variables (Environment tab)
 

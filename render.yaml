@@ -1,12 +1,11 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
-# Ensures the Web Service uses the app folder, builds the Vite client, then runs the API + static UI.
+# Commands run from the **repository root** (monorepo) so they work even if the
+# dashboard "Root Directory" is left blank. Always build + start `batch-tracker-ui/`.
 services:
   - type: web
     name: batch-tracker-ui
     runtime: node
     plan: free
-    rootDir: batch-tracker-ui
-    # Install includes Vite (needed for `npm run build`); Render sets NODE_ENV=production during build.
-    buildCommand: npm ci && npm run build && test -f client/dist/index.html
-    startCommand: npm start
+    buildCommand: npm --prefix batch-tracker-ui ci && npm --prefix batch-tracker-ui run build && test -f batch-tracker-ui/client/dist/index.html
+    startCommand: npm --prefix batch-tracker-ui start
     healthCheckPath: /
