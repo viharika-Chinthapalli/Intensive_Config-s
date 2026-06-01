@@ -2154,17 +2154,30 @@ app.get("/api/syllabus-cache/status", (_req, res) => {
 
 /** Production / Render: serve Vite build from same origin so `/api` works without a separate UI URL. */
 const clientDist = path.join(__dirname, "..", "client", "dist");
-if (fs.existsSync(path.join(clientDist, "index.html"))) {
+const clientIndexHtml = path.join(clientDist, "index.html");
+
+if (fs.existsSync(clientIndexHtml)) {
   app.use(express.static(clientDist));
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api")) return next();
-    res.sendFile(path.join(clientDist, "index.html"));
+    res.sendFile(clientIndexHtml);
+  });
+} else {
+  console.warn(
+    `[batch-tracker-ui] No UI at ${clientIndexHtml} — run "npm run build" from batch-tracker-ui. Root GET will return 503 until dist exists.`
+  );
+  app.get("/", (_req, res) => {
+    res.status(503).json({
+      error: "UI not built",
+      hint:
+        "Missing client/dist (Vite build). On Render, ensure the build step runs and Vite is installed: vite + @vitejs/plugin-react are listed in dependencies; build command should be `npm ci && npm run build`.",
+    });
   });
 }
 
 app.listen(PORT, () => {
   console.log(`Batch tracker API http://localhost:${PORT}`);
-  if (fs.existsSync(path.join(clientDist, "index.html"))) {
+  if (fs.existsSync(clientIndexHtml)) {
     console.log(`Serving UI from ${clientDist}`);
   }
 });
