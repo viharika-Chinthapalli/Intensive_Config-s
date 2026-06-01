@@ -1,0 +1,25 @@
+# Dependencies & build
+node_modules/
+dist/
+.cache/
+
+# Environment — copy `.env.example` to `.env` on your machine only (never commit `.env`)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Google service account JSON and other secrets under `secrets/` (keep `secrets/.gitkeep` in repo)
+secrets/**
+!secrets/.gitkeep
+# Avoid committing a key dropped in the project root by mistake
+/service-account*.json
+/credentials.json
+*.pem
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
