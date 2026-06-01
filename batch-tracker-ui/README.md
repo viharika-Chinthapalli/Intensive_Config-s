@@ -107,6 +107,51 @@ Open **http://localhost:5173**. Paste the spreadsheet URL or ID, list **exact ta
 
 Do not commit `service-account.json`, anything under `secrets/` except `secrets/.gitkeep`, or `.env`. Keep the JSON key private. The server loads `import "dotenv/config"` first, so variables in `.env` override defaults.
 
+## Deploy on Render (free tier)
+
+One **Web Service** runs the API and serves the built React app from the same URL (so `/api` works without CORS tricks).
+
+### 1. Prerequisites
+
+- Repo on GitHub (e.g. `Intensive_Config-s` with `batch-tracker-ui/` inside).
+- Google **service account** JSON (same as local). You will **not** upload the file to git; you add it in Render as a secret.
+
+### 2. Create the service
+
+1. Log in at [render.com](https://render.com) → **New +** → **Web Service**.
+2. Connect **GitHub** and select your repository.
+3. Configure:
+   - **Name:** e.g. `batch-tracker-ui`
+   - **Region:** closest to you
+   - **Branch:** `main`
+   - **Root Directory:** `batch-tracker-ui` (important if the app lives in that subfolder)
+   - **Runtime:** Node
+   - **Build Command:** `npm ci && npm run build`
+   - **Start Command:** `npm start`
+4. **Instance type:** Free (cold starts after idle are normal on the free tier).
+
+### 3. Environment variables (Environment tab)
+
+Add as **Secret** where possible:
+
+| Key | Value |
+|-----|--------|
+| **Either** `GOOGLE_SERVICE_ACCOUNT_JSON` | The **entire** service account JSON as **one line** (minified). Example: run `jq -c . < secrets/service-account.json` on Mac/Linux, or paste compact JSON from any JSON minifier. |
+| **Or** `GOOGLE_APPLICATION_CREDENTIALS` | Path to a JSON file **only if** you also mount that file (e.g. Render secret file); otherwise prefer `GOOGLE_SERVICE_ACCOUNT_JSON`. |
+
+Optional: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, and any tuning vars from `.env.example`.
+
+Do **not** set `PORT` yourself — Render sets it; the server reads `process.env.PORT`.
+
+### 4. Deploy
+
+Click **Create Web Service**. Wait for build + deploy. Open the **`.onrender.com`** URL: you should see the UI; align and config copy should work if every Sheet is shared with the service account email from the JSON.
+
+### 5. After deploy
+
+- First request after sleep may take **30–60 seconds** on free tier.
+- If the UI is blank, check deploy logs: `npm run build` must succeed so `client/dist/index.html` exists (the server serves that folder in production).
+
 ## Pushing to GitHub
 
 1. Confirm nothing sensitive is tracked: `git status` should **not** list `.env`, `secrets/*.json`, or `node_modules/`. Those paths are in `.gitignore`.

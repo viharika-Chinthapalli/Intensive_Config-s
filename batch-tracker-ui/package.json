@@ -3,11 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite --config client/vite.config.js",
     "dev:server": "node server/index.js",
     "build": "vite build --config client/vite.config.js",
+    "start": "node server/index.js",
     "preview": "vite preview --config client/vite.config.js",
     "test:align": "node scripts/align-verify.mjs"
   },

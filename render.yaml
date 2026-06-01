@@ -1,0 +1,11 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Ensures the Web Service uses the app folder, builds the Vite client, then runs the API + static UI.
+services:
+  - type: web
+    name: batch-tracker-ui
+    runtime: node
+    plan: free
+    rootDir: batch-tracker-ui
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /

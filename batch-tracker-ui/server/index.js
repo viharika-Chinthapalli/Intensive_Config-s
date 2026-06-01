@@ -30,11 +30,36 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
 
-function credentialsKeyPath() {
-  return (
+/** For Render etc.: paste full service account JSON in `GOOGLE_SERVICE_ACCOUNT_JSON`. Else use `GOOGLE_APPLICATION_CREDENTIALS` path or local `secrets/service-account.json`. */
+function loadGoogleAuthOptions() {
+  const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (rawJson && String(rawJson).trim()) {
+    try {
+      const credentials = JSON.parse(rawJson);
+      return { credentials, clientEmail: credentials.client_email || null };
+    } catch {
+      throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is set but is not valid JSON.");
+    }
+  }
+  const keyFile =
     process.env.GOOGLE_APPLICATION_CREDENTIALS ||
-    path.join(__dirname, "..", "secrets", "service-account.json")
-  );
+    path.join(__dirname, "..", "secrets", "service-account.json");
+  return { keyFile, credentials: null, clientEmail: null };
+}
+
+function getServiceAccountEmailForHints() {
+  try {
+    const o = loadGoogleAuthOptions();
+    if (o.clientEmail) return o.clientEmail;
+    const fp = o.keyFile;
+    if (fp && fs.existsSync(fp)) {
+      const j = JSON.parse(fs.readFileSync(fp, "utf8"));
+      if (j.client_email) return j.client_email;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 /** When Google returns 403 / PERMISSION_DENIED, point users at the exact email to share with. */
@@ -50,19 +75,11 @@ function googleSheetsPermissionHint(err) {
     msg.includes("insufficient permission");
   if (!denied) return null;
 
-  try {
-    const fp = credentialsKeyPath();
-    if (fs.existsSync(fp)) {
-      const j = JSON.parse(fs.readFileSync(fp, "utf8"));
-      if (j.type === "service_account" && j.client_email) {
-        return `Google blocked access. In each Sheet (the master tracker: column H syllabus links, column I config templates, and every linked workbook): Share → add ${j.client_email} → Viewer or Editor → Save. Retry after a few seconds.`;
-      }
-      return "Google blocked access. Your credentials file is not a service account JSON (expected type \"service_account\" and client_email). Create a key from IAM → Service accounts.";
-    }
-  } catch {
-    /* ignore */
+  const email = getServiceAccountEmailForHints();
+  if (email) {
+    return `Google blocked access. In each Sheet (the master tracker: column H syllabus links, column I config templates, and every linked workbook): Share → add ${email} → Viewer or Editor → Save. Retry after a few seconds.`;
   }
-  return "Google blocked access. Set GOOGLE_APPLICATION_CREDENTIALS to a valid service account JSON and share every spreadsheet with that account’s client_email.";
+  return "Google blocked access. Set GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_SERVICE_ACCOUNT_JSON (full JSON) and share every spreadsheet with that account’s client_email.";
 }
 
 /** First error message from Sheets API JSON body (often more specific than Gaxios message). */
@@ -73,12 +90,18 @@ function googleSheetsApiReason(err) {
 }
 
 function getSheetsClient() {
-  const keyFile = credentialsKeyPath();
-
-  const auth = new google.auth.GoogleAuth({
-    keyFile,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
+  const o = loadGoogleAuthOptions();
+  const auth = new google.auth.GoogleAuth(
+    o.credentials
+      ? {
+          credentials: o.credentials,
+          scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+        }
+      : {
+          keyFile: o.keyFile,
+          scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+        }
+  );
 
   return google.sheets({ version: "v4", auth });
 }
@@ -2129,6 +2152,19 @@ app.get("/api/syllabus-cache/status", (_req, res) => {
   res.json(getSyllabusCacheConfig());
 });
 
+/** Production / Render: serve Vite build from same origin so `/api` works without a separate UI URL. */
+const clientDist = path.join(__dirname, "..", "client", "dist");
+if (fs.existsSync(path.join(clientDist, "index.html"))) {
+  app.use(express.static(clientDist));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`Batch tracker API http://localhost:${PORT}`);
+  if (fs.existsSync(path.join(clientDist, "index.html"))) {
+    console.log(`Serving UI from ${clientDist}`);
+  }
 });
