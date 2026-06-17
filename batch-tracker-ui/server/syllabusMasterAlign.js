@@ -374,7 +374,7 @@ function isSameWeekExactMatch(cmp) {
  * Search older batches for reuse syllabus for target B{Tb}W{Tw}:
  * 1) Exact match: same calendar week W{Tw} only, full scan B{Tb-1}…B1.
  * 2) Reuse / superset / subset / caution: compare **all weeks** present on older rows in `syllabusByKey` (so B3W8 can win vs B7W7 when it fits better than B6W7).
- * 3) `reuse_config`: same week as target, ≥98% line recall, zero missing target units, zero extra rows.
+ * 3) `reuse_config`: ≥98% line recall, zero missing target units, zero extra rows (same week first; then any week before superset).
  * 4) `reuse_superset`: full target coverage with extra rows; rank by fewest extras, then smallest |W−Wtarget|, then older batch.
  */
 export function alignSyllabusSearch({
@@ -393,6 +393,8 @@ export function alignSyllabusSearch({
   const cautionReuseCandidates = [];
   const supersetReuseCandidates = [];
   const exactSameWeek = [];
+  /** Every older row with ≥98% line recall, 0 missing, 0 extra (line units) — beats superset even cross-week. */
+  const fullCoverageZeroExtraCandidates = [];
 
   const rankReuseCandidates = (list) =>
     [...list].sort((a, b) => {
@@ -501,6 +503,27 @@ export function alignSyllabusSearch({
     return rankSupersetReuse(supersetReuseCandidates)[0];
   };
 
+  const pickBestFullCoverageZeroExtra = () => {
+    if (!fullCoverageZeroExtraCandidates.length) return null;
+    return rankReuseCandidates(fullCoverageZeroExtraCandidates)[0];
+  };
+
+  const recordFullCoverageZeroExtra = (b, w, key, text, cmp) => {
+    if (
+      cmp.missingLineCount === 0 &&
+      cmp.extraLineCount === 0 &&
+      cmp.lineRec >= REUSE_CONFIG_MIN_LINE_REC
+    ) {
+      fullCoverageZeroExtraCandidates.push({
+        key,
+        batch: b,
+        week: w,
+        textPreview: text.slice(0, 200),
+        ...cmp,
+      });
+    }
+  };
+
   const tryWeek = (b, w, reason, allowReusePool = false) => {
     if (w < 1 || w > maxWeek) return null;
     const key = `B${b}W${w}`;
@@ -528,6 +551,7 @@ export function alignSyllabusSearch({
       step.missingLineSamples = cmp.missingLineSamples;
     }
     if (allowReusePool) {
+      recordFullCoverageZeroExtra(b, w, key, text, cmp);
       if (w === Tw && isSameWeekExactMatch(cmp)) {
         exactSameWeek.push({
           key,
@@ -607,6 +631,42 @@ export function alignSyllabusSearch({
       steps,
       bestReuseCandidate: bestReuseConfig,
       message: `No full syllabus match. ${bestReuseConfig.key} covers every target unit (0 missing), ≥${bar}% line recall, no extra rows — safe to reuse config after a quick spot-check.`,
+    };
+  }
+
+  const bestFullZeroExtra = pickBestFullCoverageZeroExtra();
+  if (bestFullZeroExtra) {
+    const bar = Math.round(REUSE_CONFIG_MIN_LINE_REC * 100);
+    const pct = Math.round(bestFullZeroExtra.lineRec * 100);
+    const crossWeek = bestFullZeroExtra.week !== Tw;
+    const weekNote = crossWeek
+      ? ` Source week W${bestFullZeroExtra.week} (target is W${Tw}) — cross-week scan.`
+      : "";
+    const matchType =
+      !crossWeek && bestFullZeroExtra.lineRec >= 0.995 ? "exact" : "reuse_config";
+    return {
+      targetKey,
+      winner: {
+        key: bestFullZeroExtra.key,
+        batch: bestFullZeroExtra.batch,
+        week: bestFullZeroExtra.week,
+        reason:
+          matchType === "exact"
+            ? `exact match at B${bestFullZeroExtra.batch}W${bestFullZeroExtra.week} (same week W${Tw}; best of B${Tb - 1}…B1)`
+            : `${pct}%+ line coverage (${pct}% shown), all target units present, zero extra rows at B${bestFullZeroExtra.batch}W${bestFullZeroExtra.week} — config reuse recommended (full scan B${Tb - 1}…B1)${weekNote}`,
+        matchType,
+        metrics: {
+          lineRec: bestFullZeroExtra.lineRec,
+          lineExc: bestFullZeroExtra.lineExc,
+          rec: bestFullZeroExtra.rec,
+          exc: bestFullZeroExtra.exc,
+          extraUnits: bestFullZeroExtra.extraLineCount,
+          missingUnits: bestFullZeroExtra.missingLineCount,
+        },
+      },
+      steps,
+      bestReuseCandidate: bestFullZeroExtra,
+      message: `No same-week exact match. ${bestFullZeroExtra.key}: ≥${bar}% line recall, 0 missing, 0 extra — preferred over superset rows with extra syllabus units.${weekNote}`,
     };
   }
 

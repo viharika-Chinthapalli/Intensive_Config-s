@@ -251,3 +251,37 @@ if (w8pick.winner?.key !== "B3W8" || w8pick.winner?.matchType !== "reuse_superse
   process.exit(1);
 }
 console.log("PASS: B7W8 picks full-coverage + fewest extras over high-% subset with missing units");
+
+/* B7W13: B6W16 is 100% line match, 0 miss, 0 extra (cross-week) — must beat B1W17 superset (9 extras). */
+const b7w13t = Array.from(
+  { length: 10 },
+  (_, i) => `B7W13 syllabus unit ${String(i + 1).padStart(2, "0")} standard line content here`
+).join("\n");
+const b6w16full = b7w13t;
+const b1w17sup = `${b7w13t}
+extra unit alpha supplementary line content module here
+extra unit beta supplementary line content module here
+extra unit gamma supplementary line content module here
+extra unit delta supplementary line content module here
+extra unit epsilon supplementary line content module here
+extra unit zeta supplementary line content module here
+extra unit eta supplementary line content module here
+extra unit theta supplementary line content module here
+extra unit iota supplementary line content module here
+extra unit kappa supplementary line content module here`;
+const b7w13pick = alignSyllabusSearch({
+  targetBatch: 7,
+  targetWeek: 13,
+  syllabusByKey: new Map([
+    ["B7W13", b7w13t],
+    ["B6W16", b6w16full],
+    ["B1W17", b1w17sup],
+  ]),
+  targetText: b7w13t,
+});
+console.log("\nB7W13 winner (expect B6W16 zero-extra over B1W17 superset):", b7w13pick.winner?.key, b7w13pick.winner?.matchType);
+if (b7w13pick.winner?.key !== "B6W16" || b7w13pick.winner?.matchType !== "reuse_config") {
+  console.error("FAIL B7W13: expected B6W16 reuse_config, got", b7w13pick.winner);
+  process.exit(1);
+}
+console.log("PASS: B7W13 prefers B6W16 100% zero-extra over B1W17 superset");
