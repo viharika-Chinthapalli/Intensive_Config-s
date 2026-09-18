@@ -107,6 +107,15 @@ Open **http://localhost:5173**. Paste the spreadsheet URL or ID, list **exact ta
 
 Do not commit `service-account.json`, anything under `secrets/` except `secrets/.gitkeep`, or `.env`. Keep the JSON key private. The server loads `import "dotenv/config"` first, so variables in `.env` override defaults.
 
+## Deploy on Railway
+
+1. Connect the GitHub repo at [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub**.
+2. **Root Directory:** leave empty (use repo-root `railway.json`) **or** set to `batch-tracker-ui` (uses this folder’s `railway.json`).
+3. Add env var **`GOOGLE_SERVICE_ACCOUNT_JSON`** (minified service account JSON, one line).
+4. Generate a public domain under **Networking**. Health check path: `/api/health`.
+
+Build must run Vite (`npm run build`); `npm install` alone is not enough.
+
 ## Deploy on Render (free tier)
 
 One **Web Service** runs the API and serves the built React app from the same URL (so `/api` works without CORS tricks).

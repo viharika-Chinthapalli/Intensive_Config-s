@@ -1,0 +1,21 @@
+# Railway: set Root Directory to `batch-tracker-ui` in the service settings,
+# OR deploy from repo root with the Nixpacks config below.
+#
+# Required secret (Environment Variables):
+#   GOOGLE_SERVICE_ACCOUNT_JSON=<minified one-line service account JSON>
+#
+# Optional: ANTHROPIC_API_KEY, ANTHROPIC_MODEL, SHEETS_* tuning vars (see .env.example)
+#
+# Railway sets PORT automatically; the Express server already uses process.env.PORT.
+
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm --prefix batch-tracker-ui ci"]
+
+[phases.build]
+cmds = ["npm --prefix batch-tracker-ui run build", "test -f batch-tracker-ui/client/dist/index.html"]
+
+[start]
+cmd = "npm --prefix batch-tracker-ui start"
