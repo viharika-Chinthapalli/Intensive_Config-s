@@ -382,10 +382,9 @@ function syllabusColScanOrder(centerIdx, maxCol = 45) {
 }
 
 /**
- * Find 0-based column index of “Syllabus & Pattern” (or similar) from the header row.
- * Frozen / scrollable UI does not change API column order; insert columns do.
+ * Read header row cells A… (up to sheet width) as trimmed lowercase strings.
  */
-async function detectSyllabusPatternColumnIndex(
+async function readMasterHeaderCells(
   sheetsApi,
   spreadsheetId,
   sheetTitle,
@@ -402,19 +401,107 @@ async function detectSyllabusPatternColumnIndex(
       range: `'${safe}'!A${row}:${rightLetter}${row}`,
       valueRenderOption: "FORMATTED_VALUE",
     });
-    const cells = data.values?.[0] || [];
-    for (let i = 0; i < cells.length; i++) {
-      const t = String(cells[i] ?? "")
+    return (data.values?.[0] || []).map((c) =>
+      String(c ?? "")
         .trim()
-        .toLowerCase();
-      if (!t) continue;
-      if (t.includes("syllabus") && t.includes("pattern")) return i;
-      if (/syllabus\s*&\s*pattern/.test(t)) return i;
-    }
+        .toLowerCase()
+    );
   } catch {
-    /* fall through */
+    return [];
+  }
+}
+
+/**
+ * Find 0-based column index of “Syllabus & Pattern” (or similar) from the header row.
+ * Frozen / scrollable UI does not change API column order; insert columns do.
+ */
+async function detectSyllabusPatternColumnIndex(
+  sheetsApi,
+  spreadsheetId,
+  sheetTitle,
+  headerRow1Based,
+  sheetColumnCount
+) {
+  const cells = await readMasterHeaderCells(
+    sheetsApi,
+    spreadsheetId,
+    sheetTitle,
+    headerRow1Based,
+    sheetColumnCount
+  );
+  for (let i = 0; i < cells.length; i++) {
+    const t = cells[i];
+    if (!t) continue;
+    if (t.includes("syllabus") && t.includes("pattern")) return i;
+    if (/syllabus\s*&\s*pattern/.test(t)) return i;
   }
   return 7;
+}
+
+/**
+ * Detect Batch / Week / Syllabus / Config columns from the header row.
+ * Handles a newly inserted column B (Batch stays A; Assessment Week moves to C; Syllabus & Config shift right).
+ */
+async function detectMasterTrackerColumnLayout(
+  sheetsApi,
+  spreadsheetId,
+  sheetTitle,
+  headerRow1Based,
+  sheetColumnCount
+) {
+  const cells = await readMasterHeaderCells(
+    sheetsApi,
+    spreadsheetId,
+    sheetTitle,
+    headerRow1Based,
+    sheetColumnCount
+  );
+
+  let batchColIdx = -1;
+  let weekColIdx = -1;
+  let syllabusColIdx = -1;
+  let configTemplateColIdx = -1;
+  let configDestinationColIdx = -1;
+
+  for (let i = 0; i < cells.length; i++) {
+    const t = cells[i];
+    if (!t) continue;
+    if (batchColIdx < 0 && (/batch\s*number/.test(t) || t === "batch")) batchColIdx = i;
+    if (
+      weekColIdx < 0 &&
+      (/assessment\s*week/.test(t) || t === "week" || /^week\s*number$/.test(t))
+    ) {
+      weekColIdx = i;
+    }
+    if (syllabusColIdx < 0 && t.includes("syllabus") && t.includes("pattern")) syllabusColIdx = i;
+    if (
+      configTemplateColIdx < 0 &&
+      ((t.includes("config") && (t.includes("mock") || t.includes("main"))) ||
+        /config\s*link/.test(t))
+    ) {
+      configTemplateColIdx = i;
+    }
+    if (
+      configDestinationColIdx < 0 &&
+      (/ops\s*tracker/.test(t) || (t.includes("destination") && t.includes("config")))
+    ) {
+      configDestinationColIdx = i;
+    }
+  }
+
+  if (batchColIdx < 0) batchColIdx = 0;
+  if (weekColIdx < 0) weekColIdx = batchColIdx === 0 ? 1 : batchColIdx + 1;
+  if (syllabusColIdx < 0) syllabusColIdx = 7;
+  if (configTemplateColIdx < 0) configTemplateColIdx = syllabusColIdx + 1;
+  if (configDestinationColIdx < 0) configDestinationColIdx = configTemplateColIdx + 1;
+
+  return {
+    batchColIdx,
+    weekColIdx,
+    syllabusColIdx,
+    configTemplateColIdx,
+    configDestinationColIdx,
+  };
 }
 
 async function fetchMasterRowSnapshotForApi(
@@ -1472,10 +1559,18 @@ async function mergeColumnHFormulasIntoGridRows(
 }
 
 /**
- * Vertically merged column H: only the merge anchor row has link data; continuation rows
- * look empty in the API. Walk upward within the same batch until a column H link is found.
+ * Vertically merged syllabus column: only the merge anchor row has link data; continuation rows
+ * look empty in the API. Walk upward within the same batch until a syllabus link is found.
  */
-function inheritColumnHFromMergedAbove(out, rowData, startRow0, formulaBySheetRow, syllabusColIdx, maxLookback = 120) {
+function inheritColumnHFromMergedAbove(
+  out,
+  rowData,
+  startRow0,
+  formulaBySheetRow,
+  syllabusColIdx,
+  batchColIdx = 0,
+  maxLookback = 120
+) {
   for (let i = 0; i < out.length; i++) {
     const rec = out[i];
     if (rec.linkId) continue;
@@ -1486,12 +1581,12 @@ function inheritColumnHFromMergedAbove(out, rowData, startRow0, formulaBySheetRo
       if (kPrev < 0 || kPrev >= rowData.length) break;
 
       const prevVals = [...(rowData[kPrev]?.values || [])];
-      const pad = Math.max(11, syllabusColIdx + 4);
+      const pad = Math.max(11, syllabusColIdx + 4, batchColIdx + 1);
       while (prevVals.length < pad) prevVals.push(null);
-      const prevBatch = parseCellNumber(gridCellText(prevVals[0]));
-      const prevA = String(gridCellText(prevVals[0]) || "").trim();
+      const prevBatch = parseCellNumber(gridCellText(prevVals[batchColIdx]));
+      const prevBatchText = String(gridCellText(prevVals[batchColIdx]) || "").trim();
       if (
-        prevA.length > 0 &&
+        prevBatchText.length > 0 &&
         !Number.isNaN(tb) &&
         !Number.isNaN(prevBatch) &&
         prevBatch !== tb
@@ -1544,8 +1639,8 @@ function gridCellText(cell) {
 }
 
 /**
- * Read master grid from column A through the detected syllabus column (+ buffer).
- * Column index comes from the header row (“Syllabus & Pattern”), not a hardcoded H.
+ * Read master grid from column A through the detected syllabus/config columns (+ buffer).
+ * Batch / Week / Syllabus / Config indexes come from the header row (not hardcoded A/B/H/I).
  */
 async function fetchMasterTrackerRowsGrid(
   sheetsApi,
@@ -1553,9 +1648,16 @@ async function fetchMasterTrackerRowsGrid(
   sheetTitle,
   firstRow1Based,
   lastRowRequested,
-  syllabusColIdx,
+  colLayout,
   gridBounds
 ) {
+  const {
+    batchColIdx = 0,
+    weekColIdx = 1,
+    syllabusColIdx,
+    configTemplateColIdx = syllabusColIdx + 1,
+    configDestinationColIdx = syllabusColIdx + 2,
+  } = colLayout || {};
   const safe = escapeSheetTitle(sheetTitle);
   const rowCap = gridBounds?.rowCount;
   const lastRow1Based = Math.min(
@@ -1563,7 +1665,7 @@ async function fetchMasterTrackerRowsGrid(
     typeof rowCap === "number" && rowCap > 0 ? rowCap : lastRowRequested
   );
   const endColIdx = clampLastColumnIndexToGrid(
-    Math.max(syllabusColIdx + 3, 25),
+    Math.max(syllabusColIdx + 3, configTemplateColIdx + 1, configDestinationColIdx + 1, 25),
     gridBounds?.columnCount
   );
   const endLetter = colLetterFromIndex(endColIdx);
@@ -1605,19 +1707,17 @@ async function fetchMasterTrackerRowsGrid(
     const rawVals = rowData[i]?.values || [];
     const vals = [...rawVals];
     while (vals.length < padLen) vals.push(null);
-    const batchCell = gridCellText(vals[0]);
-    const weekCell = gridCellText(vals[1]);
+    const batchCell = gridCellText(vals[batchColIdx]);
+    const weekCell = gridCellText(vals[weekColIdx]);
     const linkId = extractSheetLinkIdFromRowValues(vals, syllabusColIdx);
     const sheetRow = startRow0 + i + 1;
-    const configColIdx = syllabusColIdx + 1;
-    const configDestColIdx = syllabusColIdx + 2;
     const configLinkId =
-      configColIdx < vals.length && vals[configColIdx] != null
-        ? extractSheetLinkIdFromGridCell(vals[configColIdx])
+      configTemplateColIdx < vals.length && vals[configTemplateColIdx] != null
+        ? extractSheetLinkIdFromGridCell(vals[configTemplateColIdx])
         : null;
     const configDestinationLinkId =
-      configDestColIdx < vals.length && vals[configDestColIdx] != null
-        ? extractSheetLinkIdFromGridCell(vals[configDestColIdx])
+      configDestinationColIdx < vals.length && vals[configDestinationColIdx] != null
+        ? extractSheetLinkIdFromGridCell(vals[configDestinationColIdx])
         : null;
     out.push({
       sheetRow,
@@ -1644,7 +1744,7 @@ async function fetchMasterTrackerRowsGrid(
     firstRow1Based,
     lastRow1Based,
     out,
-    syllabusColIdx + 1
+    configTemplateColIdx
   );
   await mergeConfigDestinationLinksFromGrid(
     sheetsApi,
@@ -1653,7 +1753,7 @@ async function fetchMasterTrackerRowsGrid(
     firstRow1Based,
     lastRow1Based,
     out,
-    syllabusColIdx + 2
+    configDestinationColIdx
   );
   const formulaBySheetRow = await mergeColumnHFormulasIntoGridRows(
     sheetsApi,
@@ -1664,7 +1764,14 @@ async function fetchMasterTrackerRowsGrid(
     out,
     syllabusColIdx
   );
-  inheritColumnHFromMergedAbove(out, rowData, startRow0, formulaBySheetRow, syllabusColIdx);
+  inheritColumnHFromMergedAbove(
+    out,
+    rowData,
+    startRow0,
+    formulaBySheetRow,
+    syllabusColIdx,
+    batchColIdx
+  );
   inheritConfigLinkFromMergedAbove(out);
   inheritConfigDestinationLinkFromMergedAbove(out);
   return out;
@@ -1804,19 +1911,24 @@ app.post("/api/syllabus-align-from-master", async (req, res) => {
       });
     }
 
-    const syllabusColIdx = await detectSyllabusPatternColumnIndex(
+    const colLayout = await detectMasterTrackerColumnLayout(
       sheets,
       masterId,
       masterTabResolved,
       headerRow,
       sheetGrid?.columnCount
     );
+    const { syllabusColIdx, configTemplateColIdx, configDestinationColIdx, batchColIdx, weekColIdx } =
+      colLayout;
 
-    if (sheetGrid?.columnCount && syllabusColIdx + 2 >= sheetGrid.columnCount) {
+    const needThroughCol = Math.max(syllabusColIdx, configTemplateColIdx, configDestinationColIdx);
+    if (sheetGrid?.columnCount && needThroughCol >= sheetGrid.columnCount) {
       return res.status(400).json({
-        error: `Worksheet "${masterTabResolved}" has only ${sheetGrid.columnCount} column(s); need at least through column ${colLetterFromIndex(syllabusColIdx + 2)} for syllabus + template + destination links. Insert columns or widen the grid in Google Sheets.`,
+        error: `Worksheet "${masterTabResolved}" has only ${sheetGrid.columnCount} column(s); need at least through column ${colLetterFromIndex(needThroughCol)} for syllabus + template + destination links. Insert columns or widen the grid in Google Sheets.`,
         sheetGridBounds: sheetGrid,
         syllabusColumnIndexDetected: syllabusColIdx,
+        batchColumnIndexDetected: batchColIdx,
+        weekColumnIndexDetected: weekColIdx,
       });
     }
 
@@ -1826,7 +1938,7 @@ app.post("/api/syllabus-align-from-master", async (req, res) => {
       masterTabResolved,
       dataStart,
       lastRowRequested,
-      syllabusColIdx,
+      colLayout,
       sheetGrid
     );
 
@@ -1843,7 +1955,7 @@ app.post("/api/syllabus-align-from-master", async (req, res) => {
     }
 
     const masterGridEndColIdx = clampLastColumnIndexToGrid(
-      Math.max(syllabusColIdx + 3, 25),
+      Math.max(syllabusColIdx + 3, configTemplateColIdx + 1, configDestinationColIdx + 1, 25),
       sheetGrid?.columnCount
     );
     const masterEndLetter = colLetterFromIndex(masterGridEndColIdx);
@@ -2058,9 +2170,13 @@ app.post("/api/syllabus-align-from-master", async (req, res) => {
       masterAlignMeta: {
         syllabusColumnIndex: syllabusColIdx,
         syllabusColumnLetter: colLetterFromIndex(syllabusColIdx),
-        configTemplateColumnLetter: colLetterFromIndex(syllabusColIdx + 1),
-        /** Optional second link column (legacy); config copy uses the template column on winner vs target rows only. */
-        configDestinationColumnLetter: colLetterFromIndex(syllabusColIdx + 2),
+        batchColumnIndex: batchColIdx,
+        batchColumnLetter: colLetterFromIndex(batchColIdx),
+        weekColumnIndex: weekColIdx,
+        weekColumnLetter: colLetterFromIndex(weekColIdx),
+        configTemplateColumnLetter: colLetterFromIndex(configTemplateColIdx),
+        /** Optional second link column (legacy / Ops Tracker); config copy uses template column on winner vs target rows. */
+        configDestinationColumnLetter: colLetterFromIndex(configDestinationColIdx),
         headerRowUsedForDetection: headerRow,
         masterGridReadRange: `A${dataStart}:${masterEndLetter}${lastRow}`,
         sheetGridRowCount: sheetGrid?.rowCount ?? null,
