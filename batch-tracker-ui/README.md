@@ -110,9 +110,11 @@ Do not commit `service-account.json`, anything under `secrets/` except `secrets/
 ## Deploy on Railway
 
 1. Connect the GitHub repo at [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub**.
-2. **Root Directory:** leave empty (use repo-root `railway.json`) **or** set to `batch-tracker-ui` (uses this folder’s `railway.json`).
+2. **Root Directory:** leave **empty** (repo root). A root `package.json` tells Railpack this is a Node app.
 3. Add env var **`GOOGLE_SERVICE_ACCOUNT_JSON`** (minified service account JSON, one line).
 4. Generate a public domain under **Networking**. Health check path: `/api/health`.
+
+If Railpack still fails to detect Node, set **Builder** to **Dockerfile** (repo root `Dockerfile`) or set **Root Directory** to `batch-tracker-ui`.
 
 Build must run Vite (`npm run build`); `npm install` alone is not enough.
 

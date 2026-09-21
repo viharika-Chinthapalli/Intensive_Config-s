@@ -1,11 +1,10 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "npm --prefix batch-tracker-ui ci && npm --prefix batch-tracker-ui run build && test -f batch-tracker-ui/client/dist/index.html"
+    "buildCommand": "npm run build"
   },
   "deploy": {
-    "startCommand": "npm --prefix batch-tracker-ui start",
+    "startCommand": "npm start",
     "healthcheckPath": "/api/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5

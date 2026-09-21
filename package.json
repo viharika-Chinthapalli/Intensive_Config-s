@@ -1,0 +1,12 @@
+{
+  "name": "intensive-config-s",
+  "private": true,
+  "description": "Monorepo wrapper so Railway Railpack detects Node and builds batch-tracker-ui",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm ci --prefix batch-tracker-ui && npm run build --prefix batch-tracker-ui && node -e \"require('fs').accessSync('batch-tracker-ui/client/dist/index.html')\"",
+    "start": "npm start --prefix batch-tracker-ui"
+  }
+}
